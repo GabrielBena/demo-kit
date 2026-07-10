@@ -8,6 +8,12 @@
 #   ./run.sh --port 9000      pick a port
 #   ./run.sh --host 0.0.0.0   expose on the network (default: localhost only)
 #   ./run.sh --build          force-rebuild the frontend
+#   ./run.sh --yes            supersede OUR OWN previous instance on the port without asking
+#
+# If the port is busy: a previous instance of THIS demo owned by THIS user can be killed and
+# superseded (interactive [y/N] on a TTY; --yes skips the prompt; non-interactive without --yes
+# refuses). Anything else on the port — another user's process (shared box: never touched) or an
+# unrelated process of your own — makes the script report who/what holds it and exit.
 #
 # To leave it running for collaborators:  nohup ./run.sh >demo.log 2>&1 &
 #
@@ -38,16 +44,71 @@ REPO="$HERE"; for _ in $(seq "$REPO_UP"); do REPO="$(dirname "$REPO")"; done
 WEB="$HERE/$WEB_DIR_REL"
 DEPS="$(dirname "$REPO")/$SIDECAR_DIR_NAME"
 
-HOST="${HOST:-127.0.0.1}"; PORT="${PORT:-$DEFAULT_PORT}"; FORCE_BUILD=0
+HOST="${HOST:-127.0.0.1}"; PORT="${PORT:-$DEFAULT_PORT}"; FORCE_BUILD=0; ASSUME_YES=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --port) PORT="$2"; shift 2;;
     --host) HOST="$2"; shift 2;;
     --build) FORCE_BUILD=1; shift;;
-    -h|--help) sed -n '2,22p' "$0"; exit 0;;
+    --yes|-y) ASSUME_YES=1; shift;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0;;
     *) echo "unknown arg: $1 (try --help)"; exit 1;;
   esac
 done
+
+# --- port pre-flight: supersede OUR OWN previous instance of THIS demo — never anything else --
+# Etiquette is deliberate and narrow (shared boxes): a co-tenant's listener is NEVER touched, and
+# neither is an unrelated process of your own — the kill surface is exactly "my previous
+# `python -m $DEMO_MODULE`". Confirmed on a TTY; --yes for scripted redeploys; non-TTY without
+# --yes refuses (a nohup'd relaunch can never silently kill anything).
+free_port_or_die() {
+  command -v lsof >/dev/null 2>&1 || return 0  # cannot inspect -> let the bind fail loudly
+  local pids me pid owner args
+  pids="$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)"
+  [ -z "$pids" ] && return 0
+  me="$(id -un)"
+  for pid in $pids; do
+    owner="$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')"
+    args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+    if [ "$owner" != "$me" ]; then
+      { echo "✗ port $PORT is held by pid $pid (user: ${owner:-?}) — someone else's process."
+        echo "  Never superseding another user's work; pick another port: ./run.sh --port $((PORT + 1))"; } >&2
+      exit 1
+    fi
+    case "$args" in
+      *"-m $DEMO_MODULE"*) ;;  # our own previous instance -> eligible
+      *)
+        { echo "✗ port $PORT is held by YOUR pid $pid, but it is not this demo:"
+          echo "    ${args:-<no cmdline>}"
+          echo "  Not killing an unrelated process; stop it yourself or pick another port."; } >&2
+        exit 1;;
+    esac
+  done
+  echo "• port $PORT: a previous $DEMO_MODULE instance is running (pid(s): $(echo "$pids" | tr '\n' ' '))"
+  if [ "$ASSUME_YES" = 1 ]; then
+    echo "  --yes → superseding it."
+  elif [ -t 0 ]; then
+    printf "  kill it and redeploy here? [y/N] "
+    read -r reply
+    case "$reply" in y|Y|yes|YES) ;; *) echo "  keeping it; aborting."; exit 1;; esac
+  else
+    echo "  non-interactive and no --yes → refusing to kill. Re-run with --yes to supersede." >&2
+    exit 1
+  fi
+  # shellcheck disable=SC2086 — pids is a deliberate word-split list of OUR OWN pids
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 20); do  # up to ~6 s for a graceful TERM + port release
+    sleep 0.3
+    [ -z "$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)" ] && break
+  done
+  if [ -n "$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
+    echo "  still listening after TERM → SIGKILL"
+    # shellcheck disable=SC2086
+    kill -9 $pids 2>/dev/null || true
+    sleep 0.5
+  fi
+  echo "  superseded ✓"
+}
 
 # 1. A python with the project's deps.
 PY="${DEMO_PY:-}"
@@ -82,7 +143,8 @@ if [ "$FORCE_BUILD" = 1 ] || [ ! -f "$WEB/dist/index.html" ]; then
   fi
 fi
 
-# 4. Serve.
+# 4. Serve (superseding our own previous instance on the port, with consent — see pre-flight).
+free_port_or_die
 IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo "────────────────────────────────────────────"
 echo "  live demo · $DEMO_MODULE"
