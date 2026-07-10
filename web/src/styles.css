@@ -1,2 +1,82 @@
-/* demokit-web base styles — shared primitives only (vars, buttons, badges, panels).
-   Populated with the transport-web PR; consumers layer their app styles on top. */
+/* demokit-web base styles — the shared demo look (dark, mono, panel-grid).
+   Consumers `import "demokit-web/styles.css"` and layer app-specific rules on top. */
+
+:root {
+  --bg: #0e1116;
+  --panel: #161b22;
+  --panel-2: #1c2230;
+  --line: #2a3140;
+  --fg: #d7dee8;
+  --muted: #8b97a7;
+  --accent: #5ad1a0;
+  --accent-dim: #3a6f5c;
+  --hard: #58a6ff;
+  --soft: #6e7681;
+  --warn: #ff6b6b;
+  --amber: #f0b429;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font: 13px/1.45 ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+/* top bar + connection dot */
+#topbar {
+  display: flex; align-items: baseline; gap: 12px;
+  padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--panel);
+}
+#topbar .brand { font-weight: 700; letter-spacing: 0.5px; color: var(--accent); font-size: 16px; }
+#topbar .subtitle { color: var(--muted); }
+.conn { margin-left: auto; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+.conn-on { background: var(--accent-dim); color: #d6fff0; }
+.conn-off { background: #4a2a2a; color: #ffcaca; }
+
+/* panels */
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; min-height: 0; }
+.panel-title { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; margin-bottom: 6px; }
+.panel-title .hint { text-transform: none; letter-spacing: 0; color: #5a6472; margin-left: 8px; }
+
+/* controls sidebar */
+.controls { border-left: 1px solid var(--line); background: var(--panel); padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.group { display: flex; flex-direction: column; gap: 8px; }
+.group h3 { margin: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); font-weight: 600; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+/* widgets */
+button {
+  background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 7px 12px; cursor: pointer; font: inherit;
+  transition: background 0.12s, border-color 0.12s;
+}
+button:hover { background: #232b3a; border-color: #394253; }
+button.primary { background: var(--accent-dim); border-color: var(--accent); color: #eafff7; }
+button.primary:hover { background: #47836c; }
+button.warn:hover { border-color: var(--warn); color: #ffd9d9; }
+button:disabled { opacity: 0.4; cursor: default; }
+button.tab { border-radius: 6px 6px 0 0; border-bottom: none; opacity: 0.7; }
+button.tab.active { opacity: 1; background: var(--panel-2); border-color: #394253; }
+.tabs { display: flex; gap: 4px; }
+
+select, input[type="range"], input[type="text"], input[type="number"] {
+  background: var(--panel-2); color: var(--fg); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px; font: inherit;
+}
+select { flex: 1; }
+label.inline { color: var(--muted); display: flex; align-items: center; gap: 8px; }
+label.inline input[type="range"] { flex: 1; }
+
+/* metric readout + badges */
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
+.readout .k { color: var(--muted); }
+.readout .v { color: var(--fg); text-align: right; font-variant-numeric: tabular-nums; }
+.readout .v.good { color: var(--accent); }
+.readout .v.warn { color: var(--amber); }
+.badge { font-size: 10px; padding: 1px 6px; border-radius: 8px; background: var(--panel-2); color: var(--muted); border: 1px solid var(--line); }
+.badge.ok { background: var(--accent-dim); color: #d6fff0; border-color: var(--accent); }
+.badge.bad { background: #4a2a2a; color: #ffcaca; border-color: var(--warn); }
+
+.note { color: var(--muted); font-size: 11px; line-height: 1.5; }

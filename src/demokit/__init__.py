@@ -7,4 +7,20 @@ NO model logic — your session calls your project's canonical functions, so the
 byte-identical to a training step.
 """
 
+from demokit.serve import main, serve
+from demokit.transport import ActionHandler, ExtraHandler, Hook, WsContext, dumps, finite, make_app
+
 __version__ = "0.1.0"
+
+__all__ = [
+    "ActionHandler",
+    "ExtraHandler",
+    "Hook",
+    "WsContext",
+    "__version__",
+    "dumps",
+    "finite",
+    "main",
+    "make_app",
+    "serve",
+]

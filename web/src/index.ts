@@ -1,3 +1,7 @@
-// demokit-web — barrel. Modules land with the transport-web PR; the scaffold ships an empty
-// surface so the build pipeline (tsc → web/dist, prepare-on-install) is exercised from day 1.
-export {};
+// demokit-web — barrel.
+export type { BaseMsg, SnapshotMsg, ErrorMsg, Handlers, MsgOf, GpuInfo, GpuProc } from "./types.js";
+export { Net, type NetOptions } from "./net.js";
+export { byId, el } from "./dom.js";
+export { fitCanvas, gray } from "./canvas.js";
+export { drawBitGrid } from "./bitgrid.js";
+export { drawChart, type ChartSpec, type Series, type Marker } from "./chart.js";
