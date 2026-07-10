@@ -1,0 +1,25 @@
+{
+  "name": "demokit-web",
+  "version": "0.1.0",
+  "description": "Live-demo kit web scaffolding: typed WebSocket client, DOM helpers, canvas chart/heatmap primitives, base styles. Vanilla TS, zero runtime deps.",
+  "type": "module",
+  "license": "MIT",
+  "repository": "github:GabrielBena/demo-kit",
+  "files": [
+    "web/dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./web/dist/index.d.ts",
+      "import": "./web/dist/index.js"
+    },
+    "./styles.css": "./web/dist/styles.css"
+  },
+  "scripts": {
+    "build": "tsc -p . && cp web/src/styles.css web/dist/styles.css",
+    "prepare": "npm run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
