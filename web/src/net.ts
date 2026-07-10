@@ -1,7 +1,7 @@
 // WebSocket client — sends actions, receives typed server messages, auto-reconnects.
 // Pure transport; no model logic.
 
-import type { BaseMsg, Handlers } from "./types.js";
+import type { BaseMsg, Handlers, MsgOf } from "./types.js";
 
 export interface NetOptions<M extends BaseMsg> {
   /** Defaults to `ws(s)://<location.host>/ws` — the demo-kit server's endpoint. */
@@ -31,7 +31,7 @@ export class Net<M extends BaseMsg = BaseMsg> {
     ws.onmessage = (ev) => {
       const msg = JSON.parse(ev.data) as M;
       const h = this.opts.handlers[msg.type as M["type"]];
-      if (h) h(msg as Extract<M, { type: M["type"] }>);
+      if (h) h(msg as MsgOf<M, M["type"]>);
       else if (this.opts.onUnhandled) this.opts.onUnhandled(msg);
       else if (msg.type === "error") console.warn("[server]", (msg as BaseMsg & { msg?: string }).msg);
     };

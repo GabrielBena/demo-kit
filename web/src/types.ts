@@ -9,9 +9,15 @@ export type BaseMsg = { type: string };
 export type SnapshotMsg<S> = { type: "snapshot"; data: S };
 export type ErrorMsg = { type: "error"; msg: string };
 
-/** Handlers map for a discriminated message union: one optional callback per `type`. */
+/** The message a handler for `type: K` receives — the narrowed union member, or (for a
+ *  single-interface protocol whose `type` is a union of literals) the whole message type. */
+export type MsgOf<M extends BaseMsg, K> = Extract<M, { type: K }> extends never
+  ? M
+  : Extract<M, { type: K }>;
+
+/** Handlers map for a message protocol: one optional callback per `type`. */
 export type Handlers<M extends BaseMsg> = {
-  [K in M["type"]]?: (m: Extract<M, { type: K }>) => void;
+  [K in M["type"]]?: (m: MsgOf<M, K>) => void;
 };
 
 // --- demokit.gpu wire schemas (for consumers exposing a GPU-occupancy panel) ---
