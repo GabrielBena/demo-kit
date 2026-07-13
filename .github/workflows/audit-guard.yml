@@ -1,0 +1,12 @@
+name: audit-guard
+on:
+  pull_request:
+    branches: [audit/base]
+jobs:
+  never-merge:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Refuse — the audit PR is a commenting surface, not a merge vehicle
+        run: |
+          echo "::error::This PR diffs main against an empty base so every file is commentable. It must NEVER be merged — fixes land via normal thematic PRs to main."
+          exit 1
