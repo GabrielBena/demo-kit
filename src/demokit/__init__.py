@@ -10,7 +10,7 @@ byte-identical to a training step.
 from demokit.serve import main, serve
 from demokit.transport import ActionHandler, ExtraHandler, Hook, WsContext, dumps, finite, make_app
 
-__version__ = "0.1.0"
+__version__ = "0.1.1"
 
 __all__ = [
     "ActionHandler",
