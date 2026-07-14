@@ -19,10 +19,12 @@ export interface NetOptions<M extends BaseMsg> {
 export class Net<M extends BaseMsg = BaseMsg> {
   private ws: WebSocket | null = null;
   private closed = false;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private opts: NetOptions<M>) {}
 
   connect(): void {
+    if (this.closed) return; // a close() during the reconnect backoff must not resurrect the socket
     const scheme = location.protocol === "https:" ? "wss" : "ws";
     const url = this.opts.url ?? `${scheme}://${location.host}/ws`;
     const ws = new WebSocket(url);
@@ -38,7 +40,8 @@ export class Net<M extends BaseMsg = BaseMsg> {
     ws.onerror = () => ws.close();
     ws.onclose = () => {
       this.opts.onStatus?.(false);
-      if (!this.closed) setTimeout(() => this.connect(), this.opts.reconnectMs ?? 1000);
+      if (!this.closed)
+        this.reconnectTimer = setTimeout(() => this.connect(), this.opts.reconnectMs ?? 1000);
     };
   }
 
@@ -48,6 +51,10 @@ export class Net<M extends BaseMsg = BaseMsg> {
 
   close(): void {
     this.closed = true;
+    if (this.reconnectTimer !== null) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
     this.ws?.close();
   }
 }

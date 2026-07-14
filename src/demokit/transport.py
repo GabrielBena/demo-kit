@@ -154,8 +154,10 @@ class WsContext:
                 await asyncio.sleep(max(0.0, 1.0 / self._fps - dt))
         except asyncio.CancelledError:
             pass
-        except Exception:  # keep the socket alive; report and stop playing
+        except Exception as e:  # keep the socket alive; report AND actually stop playing
             log.exception("play loop failed")
+            self._mark_session(False)  # the loop is dead → reflect it (was left is_playing=True)
+            await self.safe_send({"type": "error", "msg": f"play stopped: {e}"})
 
 
 def make_app(
@@ -190,7 +192,7 @@ def make_app(
     @app.websocket("/ws")
     async def ws(websocket: WebSocket):
         await websocket.accept()
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         executor = ThreadPoolExecutor(max_workers=1)  # serializes ALL session access
         session = await loop.run_in_executor(executor, session_factory)
         ctx = WsContext(websocket, session, loop, executor, fps)
@@ -203,30 +205,46 @@ def make_app(
             await ctx.send_snapshot(await ctx.run(first))
 
             while True:
-                msg = await websocket.receive_json()
+                # A bad frame (non-JSON, or valid JSON that isn't an object) must NOT tear the
+                # connection down — the contract is "handler exceptions become error frames, the
+                # socket stays up". Only a real WebSocketDisconnect exits the loop.
+                try:
+                    msg = await websocket.receive_json()
+                except WebSocketDisconnect:
+                    raise
+                except Exception:
+                    await ctx.safe_send({"type": "error", "msg": "expected a JSON object"})
+                    continue
+                if not isinstance(msg, dict):
+                    kind = type(msg).__name__
+                    await ctx.send({"type": "error", "msg": f"expected a JSON object, got {kind}"})
+                    continue
                 action = str(msg.get("action"))
 
-                # Consumer-first: trains, device picks, busy-guards — anything async or stateful.
-                if extra_ws_handler is not None and await extra_ws_handler(ctx, action, msg):
-                    continue
-
-                if action == "play":
-                    await ctx.set_playing(True)
-                    continue
-                if action == "pause":
-                    await ctx.set_playing(False, send_snapshot=True)
-                    continue
-
-                handler = table.get(action)
-                if handler is None:
-                    await ctx.send({"type": "error", "msg": f"unknown action {action!r}"})
-                    continue
+                # ONE try/except around ALL dispatch — the consumer's extra_ws_handler included (it
+                # was previously UNGUARDED, so a raise there tore the connection down and killed any
+                # in-flight train). Every failure becomes an error frame; the socket lives.
                 try:
+                    # Consumer-first: trains, device picks, busy-guards — anything async or stateful.
+                    if extra_ws_handler is not None and await extra_ws_handler(ctx, action, msg):
+                        continue
+                    if action == "play":
+                        await ctx.set_playing(True)
+                        continue
+                    if action == "pause":
+                        await ctx.set_playing(False, send_snapshot=True)
+                        continue
+                    handler = table.get(action)
+                    if handler is None:
+                        await ctx.send({"type": "error", "msg": f"unknown action {action!r}"})
+                        continue
                     snap = await ctx.run(handler, session, msg)
                     await ctx.send_snapshot(snap)
+                except WebSocketDisconnect:
+                    raise
                 except Exception as e:
-                    log.exception("action %s failed", action)
-                    await ctx.send({"type": "error", "msg": f"{action}: {e}"})
+                    log.exception("action %r failed", action)
+                    await ctx.safe_send({"type": "error", "msg": f"{action}: {e}"})
         except WebSocketDisconnect:
             pass
         finally:
