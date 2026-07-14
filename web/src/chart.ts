@@ -57,6 +57,12 @@ export function drawChart(canvas: HTMLCanvasElement, spec: ChartSpec): void {
     ymin -= pad;
     ymax += pad;
   }
+  if (ymax === ymin) {
+    // A degenerate domain (explicit yDomain with min === max) makes py() divide by zero → NaN
+    // coords → a silently blank chart. Widen it so a flat series still draws across mid-box.
+    ymin -= 0.5;
+    ymax += 0.5;
+  }
 
   const px = (x: number) => padL + ((x - x0) / (x1 - x0)) * (w - padL - padR);
   const py = (y: number) => padT + ((ymax - y) / (ymax - ymin)) * (h - padT - padB);
