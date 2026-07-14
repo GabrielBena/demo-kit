@@ -61,6 +61,27 @@ done
 # neither is an unrelated process of your own — the kill surface is exactly "my previous
 # `python -m $DEMO_MODULE`". Confirmed on a TTY; --yes for scripted redeploys; non-TTY without
 # --yes refuses (a nohup'd relaunch can never silently kill anything).
+# Re-resolve the port's CURRENT listeners and signal ($1 = TERM|KILL) ONLY those still owned by me
+# AND still running `-m $DEMO_MODULE`. Re-resolving at signal time (rather than reusing the pid list
+# captured before the [y/N] prompt) closes the PID-reuse window: a pid that died and was recycled
+# during the wait — or between TERM and KILL — is never signalled off a stale value. If the port is
+# now held by anyone/anything else, abort rather than risk the wrong target.
+_signal_my_demo_on_port() {
+  local sig="$1" me pid owner args
+  me="$(id -un)"
+  for pid in $(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true); do
+    owner="$(ps -o user= -p "$pid" 2>/dev/null | tr -d ' ')"
+    args="$(ps -o args= -p "$pid" 2>/dev/null || true)"
+    if [ "$owner" = "$me" ]; then
+      case "$args" in
+        *"-m $DEMO_MODULE "*|*"-m $DEMO_MODULE") kill -"$sig" "$pid" 2>/dev/null || true; continue;;
+      esac
+    fi
+    echo "  ✗ port $PORT now held by pid $pid (user: ${owner:-?}) — not our demo; aborting." >&2
+    exit 1
+  done
+}
+
 free_port_or_die() {
   command -v lsof >/dev/null 2>&1 || return 0  # cannot inspect -> let the bind fail loudly
   local pids me pid owner args
@@ -76,7 +97,10 @@ free_port_or_die() {
       exit 1
     fi
     case "$args" in
-      *"-m $DEMO_MODULE"*) ;;  # our own previous instance -> eligible
+      # Match `-m $DEMO_MODULE` only when followed by a space (args always follow: --host/--port) or
+      # at end-of-line — never a SIBLING module (`$DEMO_MODULE.worker`, `${DEMO_MODULE}_legacy`),
+      # which an unanchored `*"-m $DEMO_MODULE"*` would wrongly claim as "our instance".
+      *"-m $DEMO_MODULE "*|*"-m $DEMO_MODULE") ;;  # our own previous instance of THIS demo -> eligible
       *)
         { echo "✗ port $PORT is held by YOUR pid $pid, but it is not this demo:"
           echo "    ${args:-<no cmdline>}"
@@ -95,16 +119,14 @@ free_port_or_die() {
     echo "  non-interactive and no --yes → refusing to kill. Re-run with --yes to supersede." >&2
     exit 1
   fi
-  # shellcheck disable=SC2086 — pids is a deliberate word-split list of OUR OWN pids
-  kill $pids 2>/dev/null || true
+  _signal_my_demo_on_port TERM  # re-resolves + re-validates each listener before signalling
   for _ in $(seq 20); do  # up to ~6 s for a graceful TERM + port release
     sleep 0.3
     [ -z "$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)" ] && break
   done
   if [ -n "$(lsof -ti "tcp:$PORT" -sTCP:LISTEN 2>/dev/null || true)" ]; then
     echo "  still listening after TERM → SIGKILL"
-    # shellcheck disable=SC2086
-    kill -9 $pids 2>/dev/null || true
+    _signal_my_demo_on_port KILL
     sleep 0.5
   fi
   echo "  superseded ✓"
@@ -152,5 +174,8 @@ echo "  local:   http://localhost:$PORT"
 [ "$HOST" = "0.0.0.0" ] && echo "  network: http://${IP:-<ip>}:$PORT   (host: $(hostname))"
 echo "  stop:    Ctrl-C"
 echo "────────────────────────────────────────────"
-exec env "${EXTRA_ENV[@]}" PYTHONPATH="$PYTHONPATH" \
+# ${arr[@]+"${arr[@]}"} — expand to the quoted elements when set, to NOTHING when empty; a bare
+# "${EXTRA_ENV[@]}" is an "unbound variable" error for an empty array under `set -u` on bash < 4.4
+# (e.g. macOS's default 3.2), which would kill a consumer that clears EXTRA_ENV.
+exec env ${EXTRA_ENV[@]+"${EXTRA_ENV[@]}"} PYTHONPATH="$PYTHONPATH" \
   "$PY" -m "$DEMO_MODULE" --host "$HOST" --port "$PORT"

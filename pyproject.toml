@@ -1,6 +1,6 @@
 [project]
 name = "demo-kit"
-version = "0.1.0"
+version = "0.1.1"
 description = "Live-demo kit: the substrate-agnostic transport + web scaffolding for interactive research demos — a Python FastAPI/WebSocket server streaming state snapshots of a real training/dynamics loop to a thin canvas client."
 readme = "README.md"
 license = { file = "LICENSE" }

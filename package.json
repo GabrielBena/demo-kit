@@ -1,6 +1,6 @@
 {
   "name": "demokit-web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Live-demo kit web scaffolding: typed WebSocket client, DOM helpers, canvas chart/heatmap primitives, base styles. Vanilla TS, zero runtime deps.",
   "type": "module",
   "license": "MIT",

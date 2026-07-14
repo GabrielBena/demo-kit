@@ -37,15 +37,19 @@ def _smi(args: list[str]) -> str | None:
 
 
 def pick_free_gpu(
-    *, name_match: str = "A6000", free_mem_ceil_mib: float = _DEFAULT_FREE_MEM_CEIL_MIB
+    *, name_match: str | None = None, free_mem_ceil_mib: float = _DEFAULT_FREE_MEM_CEIL_MIB
 ) -> dict | None:
     """The first genuinely-free allowlisted card as ``{'uuid', 'index', 'label'}``, else ``None``.
 
     "Free" = a card whose name contains ``name_match``, with no compute processes and
     < ``free_mem_ceil_mib`` resident — safe to use without disturbing anyone. Deterministic
     (lowest index first). Never raises.
+
+    ``name_match`` has **no default policy** (``None`` → return ``None``, never auto-pick): a generic
+    kit must not bake one workstation's sanctioned-card name into every consumer. State the allowlist
+    explicitly at the call site (e.g. ``name_match="A6000"`` on this box's A6000-only policy).
     """
-    if shutil.which("nvidia-smi") is None:
+    if name_match is None or shutil.which("nvidia-smi") is None:
         return None
     gpus = _smi(["--query-gpu=index,name,memory.used,uuid", "--format=csv,noheader,nounits"])
     if not gpus:
@@ -104,7 +108,7 @@ def _proc_info(pids: list[str]) -> dict[str, tuple[str, str]]:
     return info
 
 
-def list_gpus(*, eligible_name_match: str = "A6000") -> list[dict]:
+def list_gpus(*, eligible_name_match: str | None = None) -> list[dict]:
     """Every GPU on the box with its live occupancy — for a "who's on what" panel (and the force
     picker). Per card: ``index``, short ``name`` (+ ``full_name``), ``uuid``, ``mem_used`` /
     ``mem_total`` (MiB), ``is_eligible`` (may the auto-picker take it?), and ``procs`` — each
@@ -175,7 +179,8 @@ def list_gpus(*, eligible_name_match: str = "A6000") -> list[dict]:
                 "uuid": uuid,
                 "mem_used": used,
                 "mem_total": total,
-                "is_eligible": eligible_name_match in name,
+                # No policy stated (``eligible_name_match=None``) → nothing is auto-eligible.
+                "is_eligible": bool(eligible_name_match) and eligible_name_match in name,
                 "procs": procs,
             }
         )

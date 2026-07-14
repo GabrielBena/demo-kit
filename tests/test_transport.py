@@ -177,3 +177,59 @@ def test_web_dist_is_mounted_when_present(tmp_path):
     c = TestClient(make_app(FakeSession, web_dist=tmp_path))
     r = c.get("/")
     assert r.status_code == 200 and "demo" in r.text
+
+
+# --- connection resilience: a bad frame or a handler raise must NEVER tear the socket down --------
+# (blind-review regressions, 2026-07-14: a malformed frame / non-dict JSON / unguarded extra-handler
+# exception used to unwind the connection — auto-reconnect then landed in a FRESH session, silently
+# resetting progress.)
+
+
+def test_non_dict_frame_is_an_error_frame_not_a_teardown():
+    with _client().websocket_connect("/ws") as ws:
+        _recv(ws)
+        ws.send_json("step")  # valid JSON, but not an object → msg.get() would have raised
+        msg = _recv(ws)
+        assert msg["type"] == "error" and "object" in msg["msg"]
+        ws.send_json({"action": "step"})  # the socket survived
+        assert _recv(ws)["data"]["step"] == 1
+
+
+def test_malformed_json_frame_is_an_error_frame_not_a_teardown():
+    with _client().websocket_connect("/ws") as ws:
+        _recv(ws)
+        ws.send_text("not json {{{")  # receive_json() raises JSONDecodeError
+        assert _recv(ws)["type"] == "error"
+        ws.send_json({"action": "step"})  # the socket survived
+        assert _recv(ws)["data"]["step"] == 1
+
+
+def test_extra_handler_exception_is_an_error_frame_not_a_teardown():
+    async def extra(ctx, action, msg):
+        if action == "explode":
+            raise RuntimeError("boom in extra")
+        return False
+
+    with _client(extra_ws_handler=extra).websocket_connect("/ws") as ws:
+        _recv(ws)
+        ws.send_json({"action": "explode"})
+        msg = _recv(ws)
+        assert msg["type"] == "error" and "boom in extra" in msg["msg"]
+        ws.send_json({"action": "step"})  # the connection survived the handler raise
+        assert _recv(ws)["data"]["step"] == 1
+
+
+def test_play_loop_step_error_reports_instead_of_silently_freezing():
+    class Boom(FakeSession):
+        def step(self):
+            raise RuntimeError("step exploded")
+
+    with TestClient(make_app(Boom, fps=200.0)).websocket_connect("/ws") as ws:
+        _recv(ws)  # initial frame
+        ws.send_json({"action": "play"})
+        # the play loop's step() raises: the client must get an error frame, not silence + a stuck
+        # is_playing=True. pause then acks with a settled snapshot showing is_playing False.
+        msg = _recv(ws)
+        assert msg["type"] == "error" and "play stopped" in msg["msg"]
+        ws.send_json({"action": "pause"})
+        assert _recv(ws)["data"]["is_playing"] is False
