@@ -156,6 +156,7 @@ fi
 if [ "$FORCE_BUILD" = 1 ] || [ ! -f "$WEB/dist/index.html" ]; then
   NPM="${NPM:-$(command -v npm || true)}"
   if [ -n "$NPM" ]; then
+    export PATH="$(dirname "$NPM"):$PATH"  # npm is `#!/usr/bin/env node` — put its sibling node on PATH
     echo "• building frontend ($NPM) ..."
     [ -d "$WEB/node_modules" ] || "$NPM" install --prefix "$WEB"
     "$NPM" run build --prefix "$WEB"
@@ -171,6 +172,7 @@ IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
 echo "────────────────────────────────────────────"
 echo "  live demo · $DEMO_MODULE"
 echo "  local:   http://localhost:$PORT"
+echo "  remote:  ssh -L $PORT:localhost:$PORT $(whoami)@$(hostname)  →  http://localhost:$PORT on your laptop"
 [ "$HOST" = "0.0.0.0" ] && echo "  network: http://${IP:-<ip>}:$PORT   (host: $(hostname))"
 echo "  stop:    Ctrl-C"
 echo "────────────────────────────────────────────"
