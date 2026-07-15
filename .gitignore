@@ -1,0 +1,18 @@
+# build products
+web/dist/
+node_modules/
+dist/
+*.egg-info/
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# editors
+.vscode/
+.idea/
+*.swp
+.DS_Store
