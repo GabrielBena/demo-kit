@@ -58,12 +58,14 @@ ACTIONS = {
     # ... every entry: (session, msg) -> SnapshotLike | None
 }
 
+
 def app():
     return make_app(
-        MySession,                      # zero-arg factory; one session per connection
+        MySession,  # zero-arg factory; one session per connection
         actions=ACTIONS,
         web_dist=Path(__file__).parent / "web" / "dist",
     )
+
 
 if __name__ == "__main__":
     main(app, description="my live demo")
