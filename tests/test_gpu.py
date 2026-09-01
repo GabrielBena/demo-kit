@@ -65,10 +65,10 @@ def test_graceful_none_without_nvidia_smi(monkeypatch):
 # 5-col (index,name,mem_used,mem_total,uuid) for list_gpus; 3-col (index,name,uuid) for
 # gpu_by_index.
 _GPUS5 = (
-    "0, NVIDIA GeForce RTX 4090, 12000, 24564, GPU-4090a\n"
-    "1, NVIDIA RTX A6000, 4000, 49140, GPU-a6000mine\n"
-    "2, NVIDIA RTX A6000, 12, 49140, GPU-a6000free\n"
-    "3, NVIDIA GeForce RTX 4090, 20, 24564, GPU-4090idle"
+    "0, NVIDIA GeForce RTX 4090, 12000, 24564, GPU-4090a, 97\n"
+    "1, NVIDIA RTX A6000, 4000, 49140, GPU-a6000mine, 62\n"
+    "2, NVIDIA RTX A6000, 12, 49140, GPU-a6000free, 0\n"
+    "3, NVIDIA GeForce RTX 4090, 20, 24564, GPU-4090idle, [N/A]"
 )
 _GPUS3 = (
     "0, NVIDIA GeForce RTX 4090, GPU-4090a\n"
@@ -106,6 +106,8 @@ def test_list_gpus_maps_processes_to_owners(monkeypatch):
     # only the allowlisted cards are auto-eligible
     assert [g["is_eligible"] for g in gs] == [False, True, True, False]
     assert gs[0]["mem_used"] == 12000 and gs[0]["mem_total"] == 24564  # parsed as ints
+    # utilization %: parsed as int; unparseable ("[N/A]" — MIG/permission) → None, never a crash
+    assert [g["util"] for g in gs] == [97, 62, 0, None]
     # The busy 4090 names its co-tenant owner (via ps, not nvidia-smi).
     assert gs[0]["procs"] == [
         {"pid": "111", "user": "alice", "cmd": "python run_train.py", "mem": 12000}

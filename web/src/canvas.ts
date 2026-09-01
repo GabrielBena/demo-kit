@@ -1,6 +1,9 @@
 // dpr-aware canvas sizing + shared color helpers.
 
-/** Size the bitmap to the canvas's CSS display size × devicePixelRatio and return a cleared ctx.
+import { effectiveDpr } from "./uiscale.js";
+
+/** Size the bitmap to the canvas's CSS display size × the EFFECTIVE device-pixel-ratio (devicePixelRatio ×
+ *  the UI scale — see uiscale.ts; = devicePixelRatio when no scale is set) and return a cleared ctx.
  *  CONTRACT: every canvas passed here MUST have a CSS-pinned display size (absolute-fill, a fixed
  *  height rule, …). An UNSTYLED canvas displays at its attribute size, so clientWidth×dpr feeds
  *  back and the canvas GROWS by dpr on every call — the runaway-diagram bug. */
@@ -9,7 +12,7 @@ export function fitCanvas(canvas: HTMLCanvasElement): {
   w: number;
   h: number;
 } {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = effectiveDpr();
   const w = canvas.clientWidth || 300;
   const h = canvas.clientHeight || 150;
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {

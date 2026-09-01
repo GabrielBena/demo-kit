@@ -111,7 +111,7 @@ def _proc_info(pids: list[str]) -> dict[str, tuple[str, str]]:
 def list_gpus(*, eligible_name_match: str | None = None) -> list[dict]:
     """Every GPU on the box with its live occupancy — for a "who's on what" panel (and the force
     picker). Per card: ``index``, short ``name`` (+ ``full_name``), ``uuid``, ``mem_used`` /
-    ``mem_total`` (MiB), ``is_eligible`` (may the auto-picker take it?), and ``procs`` — each
+    ``mem_total`` (MiB), ``util`` (percent, ``None`` where unreported), ``is_eligible`` (may the auto-picker take it?), and ``procs`` — each
     compute process as ``{pid, user, cmd, mem}`` with the **owner username** resolved via ``ps``
     (so a co-tenant's job is named, not just numbered). Empty list on a GPU-less box or any
     ``nvidia-smi`` hiccup. Never raises.
@@ -122,7 +122,10 @@ def list_gpus(*, eligible_name_match: str | None = None) -> list[dict]:
     if shutil.which("nvidia-smi") is None:
         return []
     gpus_raw = _smi(
-        ["--query-gpu=index,name,memory.used,memory.total,uuid", "--format=csv,noheader,nounits"]
+        [
+            "--query-gpu=index,name,memory.used,memory.total,uuid,utilization.gpu",
+            "--format=csv,noheader,nounits",
+        ]
     )
     if not gpus_raw:
         return []
@@ -154,6 +157,10 @@ def list_gpus(*, eligible_name_match: str | None = None) -> list[dict]:
         if len(parts) < 5:
             continue
         index, name, mem_used, mem_total, uuid = parts[:5]
+        try:  # 6th column (utilization %) — absent on older queries/N/A under MIG → None
+            util: int | None = int(float(parts[5])) if len(parts) > 5 else None
+        except ValueError:
+            util = None
         try:
             used: int | None = int(float(mem_used))
         except ValueError:
@@ -179,6 +186,7 @@ def list_gpus(*, eligible_name_match: str | None = None) -> list[dict]:
                 "uuid": uuid,
                 "mem_used": used,
                 "mem_total": total,
+                "util": util,
                 # No policy stated (``eligible_name_match=None``) → nothing is auto-eligible.
                 "is_eligible": bool(eligible_name_match) and eligible_name_match in name,
                 "procs": procs,
