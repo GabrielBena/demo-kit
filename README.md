@@ -94,6 +94,20 @@ net.connect();
 net.send({ action: "step" });
 ```
 
+### UI scale (presentation zoom)
+
+Demo layouts are sized for a dev screen; on a projector they are tiny. `initUiScale` gives the app an
+app-scoped zoom that behaves exactly like browser zoom (layout transform + canvas density via
+`fitCanvas`), remembered per browser and pinnable in a link (`?scale=1.5`):
+
+```ts
+import { initUiScale, uiScaleControl, canvasPoint } from "demokit-web";
+initUiScale({ root: byId("app"), storageKey: "mydemo.uiScale", defaultScale: 1.5 }); // before the first draw
+byId("topbar").insertBefore(uiScaleControl(), byId("conn")); // the preset picker (85–200%)
+// canvas hit-tests: layout px whatever the scale
+canvas.onclick = (e) => { const { x, y } = canvasPoint(canvas, e); /* … */ };
+```
+
 ## The launcher
 
 `templates/run-demo.sh` is a parameterized one-command deploy (env auto-detect, sidecar server
