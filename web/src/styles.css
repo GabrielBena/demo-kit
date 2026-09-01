@@ -32,6 +32,10 @@ body {
 #topbar .brand { font-weight: 700; letter-spacing: 0.5px; color: var(--accent); font-size: 16px; }
 #topbar .subtitle { color: var(--muted); }
 .conn { margin-left: auto; padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+/* UI-scale picker (uiScaleControl) — sits right-aligned just before the connection dot */
+.ui-scale { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-size: 11px; }
+.ui-scale select { flex: none; padding: 2px 4px; font-size: 11px; }
+.ui-scale ~ .conn { margin-left: 0; }
 .conn-on { background: var(--accent-dim); color: #d6fff0; }
 .conn-off { background: #4a2a2a; color: #ffcaca; }
 
