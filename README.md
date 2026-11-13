@@ -6,12 +6,13 @@ rebuilt light, in two halves:
 - **The drawing half, `demokit-web`** (v2, here): a small pixel engine (an indexed framebuffer, a
   5 × 7 font, dithered looks) and its hosts (a browser canvas, a Slidev component, a PNG in Node).
   Plain JavaScript modules, type-checked from their JSDoc: no build step, no runtime dependency.
-- **The live half, `demokit`** (Python): v2's is next, a server on Python's standard library that
-  streams what a running loop does to the page. Until it lands, v1's transport (below) is unchanged.
+- **The live half, `demokit`** (Python): a server on Python's standard library that streams what a
+  running loop does to a page, which plays it at a steady pace of world time.
 
 The rule the kit keeps by shape: **the browser draws, it never computes the dynamics; the loop
-runs the project's own functions.** v1 (a FastAPI transport and a TypeScript client) stays readable
-and installable under its tags, `v0.1.0` to `v0.1.3`.
+runs the project's own functions.** v1 (a FastAPI transport and a TypeScript client, extracted
+from the live demo of [blastema](https://github.com/GabrielBena/blastema)) stays readable and
+installable under its tags, `v0.1.0` to `v0.1.3`.
 
 ## A scene
 
@@ -86,7 +87,10 @@ node src/demokit/web/render.mjs scenes.js cells data.json out.png --step 2 --loo
 ## Install
 
 ```bash
-# the drawing half, in a deck or a page's project
+# both halves: the server, with the modules it serves
+pip install "demo-kit @ git+https://github.com/GabrielBena/demo-kit@v2.0.0"
+
+# the drawing half alone, in a deck or a page's project
 npm install "github:GabrielBena/demo-kit#v2.0.0"
 
 # v1, both halves, as before
@@ -96,71 +100,65 @@ npm install "github:GabrielBena/demo-kit#v0.1.3"
 
 Local development: `pip install -e /path/to/demo-kit[dev]` and `npm install /path/to/demo-kit`.
 
-## The live half today: v1's transport
+## The live half
 
-v2's live half will replace this section. Until then the Python package is v1's, extracted from
-the live demo of [blastema](https://github.com/GabrielBena/blastema), its reference consumer.
-
-### The session protocol
-
-Your session object is duck-typed; the transport needs:
-
-- `step() -> SnapshotLike` — advance one tick (the play loop calls this at ≤ fps).
-- `snapshot() -> SnapshotLike` — the current state, no advance.
-- optional `initial_snapshot() -> SnapshotLike` — richer first frame (falls back to `snapshot()`).
-- optional `is_playing: bool` attribute — kept in sync by play/pause.
-
-`SnapshotLike` = a `dict` or anything with `.to_dict()`. Snapshots are sent as
-`{"type": "snapshot", "data": ...}` with NaN/±Inf replaced by `null` (browsers' strict
-`JSON.parse` rejects bare `NaN` — the kit never lets that frame-drop happen).
-
-### Server usage
+A **source** is a generator the project writes. Each item is one **chunk**: what happened over a
+span of world time `[t0, t1)`, as named arrays. `serve` hands the chunks to a page that plays world
+time at a steady pace and draws its scene at every frame. The page pulls the next chunk whenever
+its buffer runs short, so the loop runs ahead of what is shown, never further than the page asks;
+if the loop falls behind, the clock waits for it. Python's standard library only.
 
 ```python
+from array import array
 from pathlib import Path
-from demokit.transport import make_app
-from demokit.serve import main
+from demokit import chunk, serve
 
-ACTIONS = {
-    "reset": lambda s, msg: s.reset(int(msg.get("seed", 0))),
-    "set_task": lambda s, msg: s.set_task(str(msg.get("name", ""))),
-    # ... every entry: (session, msg) -> SnapshotLike | None
-}
+def run(inbox):  # called at every page load; `inbox` holds what the page sends
+    t = 0.0
+    while True:
+        who, when = step_my_model(100.0)  # the project's own code, 100 ms of world time
+        yield chunk(t, t + 100.0, key=True, who=array("i", who), when=array("f", when))
+        t += 100.0
 
-
-def app():
-    return make_app(
-        MySession,  # zero-arg factory; one session per connection
-        actions=ACTIONS,
-        web_dist=Path(__file__).parent / "web" / "dist",
-    )
-
-
-if __name__ == "__main__":
-    main(app, description="my live demo")
+serve(run, page=Path(__file__).parent / "page")  # http://127.0.0.1:8170
 ```
 
-Built-in actions: `play`, `pause` (re-sends a snapshot), `step`. Anything the table shouldn't
-handle synchronously (long-running trains, device picks) goes through `extra_ws_handler`, an async
-hook that runs *first* and can swallow any action; `on_connect`/`on_disconnect` bracket the
-connection. See `demokit/transport.py` docstrings for the `WsContext` surface.
+- **Arrays** are anything with the buffer protocol (a NumPy array, an `array.array`), sent as their
+  raw bytes: 8, 16 and 32-bit integers, 32 and 64-bit floats.
+- **Keyframes:** a chunk marked `key=True` holds the state as a whole; the others only what changed.
+  The page keeps the chunks from the last keyframe before now, and back `span` world units, and
+  drops the rest.
+- **The inbox:** a click on the page arrives as `{"pick": [x, y], "t": t}`; `send(msg)` posts any
+  message. The source reads them between chunks.
+- **Routes:** `POST /start` (a fresh run), `GET /next` (the next chunk; 204 when the source ends),
+  `POST /act` (a message), `/kit/...` (this kit's modules), the rest from `page`. Bound to
+  localhost: from another machine, `ssh -L 8170:localhost:8170 <host>`.
 
-`demokit.gpu` gives `list_gpus()` (per-card occupancy incl. process owners) and
-`pick_free_gpu(name_match=..., free_mem_ceil_mib=...)` — an *etiquette* picker: only cards whose
-name matches the allowlist, with no compute process and low resident memory, are ever auto-picked.
-Force-picking any card is a deliberate human choice via `gpu_by_index`.
+The page (`page/index.html`):
 
-### The launcher
+```html
+<canvas id="view" style="width: 100%; image-rendering: pixelated"></canvas>
+<script type="module">
+  import { live } from "/kit/live.js";
+  import { myScene } from "./scene.js";
+  live({ canvas: document.getElementById("view"), scene: myScene, perSecond: 1000, unit: "MS", span: 300 });
+</script>
+```
 
-`templates/run-demo.sh` is a parameterized one-command deploy (env auto-detect, sidecar server
-deps so the base env stays clean, npm build on demand, CPU-pinned server). Consumers **vendor a
-copy**, fill the config block at the top, and keep the provenance header pointing back here.
+The scene's `data` is the tape at time `t`: `{t, key, chunks}`, the chunks begun by then with the
+last keyframe among them, each `{t0, t1, key, meta, arrays, shapes}` with typed arrays. `input`
+adds `t`, `speed` and `playing` to `step`, `tick` and `pick`. `speed` is a multiple of real time,
+`perSecond` world units a second; space pauses, `]` and `[` (or the arrows) double and halve it; a
+status line is drawn over the bottom 9 rows.
+
+**A working example**, dots that wander and flash: `python -m demokit.example`, then open
+`http://127.0.0.1:8170` (its source, page and scene are in `src/demokit/example/`).
 
 ## Development
 
 ```bash
 pip install -e .[dev]
-pytest -q            # transport + gpu + json-safety + the agnosticism gate
+pytest -q            # the chunks, the server's routes, the agnosticism gate
 ruff check . && ruff format --check .
 npm ci               # the type checker only
 npm run check        # tsc over the JSDoc types, no output
