@@ -1,38 +1,107 @@
 # demo-kit
 
-The **live-demo kit**: substrate-agnostic scaffolding for interactive research demos where a
-browser watches a *real* training / dynamics loop run live and pokes at it. One paradigm, two
-layers:
+The **demo kit**: research demos drawn in pixel art, from a loop that really runs. Version 2 is
+rebuilt light, in two halves:
 
-- **`demokit` (Python, pip)** — a FastAPI + WebSocket transport that wraps *your* stateful
-  session object: a play loop streams JSON state snapshots at a capped fps, user actions dispatch
-  to your session's methods, everything serialized on a per-connection worker so the science code
-  never races. Plus a GPU-occupancy/etiquette module and a uvicorn launcher.
-- **`demokit-web` (TypeScript, npm)** — the matching thin-client primitives: a typed WebSocket
-  client, DOM helpers, a canvas line chart, dpr-aware canvas sizing, a bit-grid heatmap, and base
-  styles. Vanilla TS, zero runtime dependencies; bring your own renderer for your substrate.
+- **The drawing half, `demokit-web`** (v2, here): a small pixel engine (an indexed framebuffer, a
+  5 × 7 font, dithered looks) and its hosts (a browser canvas, a Slidev component, a PNG in Node).
+  Plain JavaScript modules, type-checked from their JSDoc: no build step, no runtime dependency.
+- **The live half, `demokit`** (Python): v2's is next, a server on Python's standard library that
+  streams what a running loop does to the page. Until it lands, v1's transport (below) is unchanged.
 
-The design rule the kit enforces by shape: **the browser renders snapshots, it never computes;
-the server orchestrates, it never re-implements dynamics.** Every action routes through your
-session, which calls your project's canonical functions — so the per-frame tick is byte-identical
-to a training step.
+The rule the kit keeps by shape: **the browser draws, it never computes the dynamics; the loop
+runs the project's own functions.** v1 (a FastAPI transport and a TypeScript client) stays readable
+and installable under its tags, `v0.1.0` to `v0.1.3`.
 
-Extracted from the live demo of [blastema](https://github.com/GabrielBena/blastema), which is the
-reference consumer.
+## A scene
+
+A scene is a pure function, `scene(scr, look, data, input)`: it draws one picture of `data` on the
+screen `scr`, in the roles of `look`, never naming a colour. Its host decides when to call it and
+what `input` holds (a slide's clicks as `step`, the frames since as `tick`, the pixel last clicked
+as `pick`).
+
+```js
+// @ts-check
+/** A row of cells, each lit by its value; the clicked one framed. */
+export function cells(scr, L, values, { pick }) {
+  scr.clear(L.paper);
+  scr.text("CELLS", 4, 4, L.text);
+  scr.cells([values], 4, 16, 8, 8, (v) => L.level(v));
+  if (pick) scr.box(4 + 8 * Math.floor((pick[0] - 4) / 8), 16, 8, 8, L.hot);
+}
+```
+
+## The engine (`src/demokit/web/`)
+
+- **`screen.js`**: `screen(w, h)`, every pixel a palette index, the whole scene drawn again each
+  frame (immediate mode, nothing retained): `put`, `rect`, `box`, `line`, `sprite`, `cells`,
+  `text`, `clear`. A colour is an index, or a `tone(a, b, t)`: two indices mixed by ordered
+  dithering, so a few colours make every shade; `ramp(stops, t)` walks a list of them.
+- **`font.js`**: the 5 × 7 font, the classic character-LCD shapes, ASCII and a few symbols.
+- **`looks.js`**: a palette and the roles a scene draws with (`paper`, `rule`, `dim`, `text`,
+  `hot`; `mag` and `sign` shade an area, `level` and `value` colour a cell). Three looks:
+  **arcade** (a dark screen, the default), **ink** (ink on paper) and **mono** (one bit). Every look
+  keeps a cue beyond hue: a sign is orange or blue, the colour-blind pair, and a pattern where hue
+  fails.
+- **`blit.js`**: a screen on a canvas, one pixel for one, scaled by CSS with square pixels;
+  `loop(frame, fps)`; `at(event, canvas)`, the screen pixel under a pointer.
+- **`png.js`** (Node): a screen as a PNG, scaled by a whole number.
+
+## Hosts
+
+**In a page**, served as static files:
+
+```html
+<canvas id="view" style="width: 100%; image-rendering: pixelated"></canvas>
+<script type="module">
+  import { screen } from "./web/screen.js";
+  import { LOOKS } from "./web/looks.js";
+  import { at, blit, loop } from "./web/blit.js";
+  import { cells } from "./scenes.js";
+
+  const canvas = document.getElementById("view"), scr = screen(320, 180), look = LOOKS.arcade;
+  let pick = null, values = Array.from({ length: 16 }, () => Math.random());
+  canvas.onclick = (e) => (pick = at(e, canvas));
+  loop((tick) => (cells(scr, look, values, { step: 0, tick, pick }), blit(scr, canvas, look.palette)), 10);
+</script>
+```
+
+**On a slide** (Slidev): register `Pixel.vue` in the deck's `setup/main.js`, then
+`<Pixel :scene="cells" :data="values" :step="$clicks" />` on any slide. It redraws when the step
+changes, every frame with `fps`, on a click (`pick`), and can grow a new picture out of a rectangle
+of the old one (`grow`).
+
+```js
+import { defineAppSetup } from "@slidev/types";
+import Pixel from "demokit-web/Pixel.vue";
+export default defineAppSetup(({ app }) => app.component("Pixel", Pixel));
+```
+
+**To a PNG** (Node), to see a scene without a browser or put it in a note:
+
+```bash
+node src/demokit/web/render.mjs scenes.js cells data.json out.png --step 2 --look ink --scale 3
+```
 
 ## Install
 
 ```bash
-# python (server side)
-pip install "demo-kit @ git+https://github.com/GabrielBena/demo-kit@v0.1.0"
+# the drawing half, in a deck or a page's project
+npm install "github:GabrielBena/demo-kit#v2.0.0"
 
-# web (client side) — in your demo's web/ dir
-npm install "github:GabrielBena/demo-kit#v0.1.0"
+# v1, both halves, as before
+pip install "demo-kit @ git+https://github.com/GabrielBena/demo-kit@v0.1.3"
+npm install "github:GabrielBena/demo-kit#v0.1.3"
 ```
 
 Local development: `pip install -e /path/to/demo-kit[dev]` and `npm install /path/to/demo-kit`.
 
-## The session protocol
+## The live half today: v1's transport
+
+v2's live half will replace this section. Until then the Python package is v1's, extracted from
+the live demo of [blastema](https://github.com/GabrielBena/blastema), its reference consumer.
+
+### The session protocol
 
 Your session object is duck-typed; the transport needs:
 
@@ -45,7 +114,7 @@ Your session object is duck-typed; the transport needs:
 `{"type": "snapshot", "data": ...}` with NaN/±Inf replaced by `null` (browsers' strict
 `JSON.parse` rejects bare `NaN` — the kit never lets that frame-drop happen).
 
-## Server usage
+### Server usage
 
 ```python
 from pathlib import Path
@@ -81,36 +150,7 @@ connection. See `demokit/transport.py` docstrings for the `WsContext` surface.
 name matches the allowlist, with no compute process and low resident memory, are ever auto-picked.
 Force-picking any card is a deliberate human choice via `gpu_by_index`.
 
-## Client usage
-
-```ts
-import { Net, byId, el, drawChart } from "demokit-web";
-import "demokit-web/styles.css";
-
-type Msg = SnapshotMsg<MySnapshot> | ErrorMsg | { type: "my_custom"; ... };
-const net = new Net<Msg>({
-  handlers: { snapshot: (m) => render(m.data), error: (m) => console.warn(m.msg) },
-  onStatus: (up) => byId("dot").classList.toggle("up", up),
-});
-net.connect();
-net.send({ action: "step" });
-```
-
-### UI scale (presentation zoom)
-
-Demo layouts are sized for a dev screen; on a projector they are tiny. `initUiScale` gives the app an
-app-scoped zoom that behaves exactly like browser zoom (layout transform + canvas density via
-`fitCanvas`), remembered per browser and pinnable in a link (`?scale=1.5`):
-
-```ts
-import { initUiScale, uiScaleControl, canvasPoint } from "demokit-web";
-initUiScale({ root: byId("app"), storageKey: "mydemo.uiScale", defaultScale: 1.5 }); // before the first draw
-byId("topbar").insertBefore(uiScaleControl(), byId("conn")); // the preset picker (85–200%)
-// canvas hit-tests: layout px whatever the scale
-canvas.onclick = (e) => { const { x, y } = canvasPoint(canvas, e); /* … */ };
-```
-
-## The launcher
+### The launcher
 
 `templates/run-demo.sh` is a parameterized one-command deploy (env auto-detect, sidecar server
 deps so the base env stays clean, npm build on demand, CPU-pinned server). Consumers **vendor a
@@ -122,7 +162,9 @@ copy**, fill the config block at the top, and keep the provenance header pointin
 pip install -e .[dev]
 pytest -q            # transport + gpu + json-safety + the agnosticism gate
 ruff check . && ruff format --check .
-npm install && npm run build
+npm ci               # the type checker only
+npm run check        # tsc over the JSDoc types, no output
+npm test             # node --test: the engine
 ```
 
 `tests/test_agnostic.py` is a red-test gate keeping the kit substrate-agnostic: no consumer

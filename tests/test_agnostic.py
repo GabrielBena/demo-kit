@@ -27,12 +27,14 @@ _CODE_FORBIDDEN = re.compile(
 # The README may name the public reference consumer (attribution) — nothing else.
 _DOC_FORBIDDEN = re.compile(_BOUND.format("bool_nca|mosaic_diff|mosaic|softjax|eis"), re.I)
 
-_CODE_DIRS = ("src", "web/src", "templates", "tests", ".github")
+_CODE_DIRS = ("src", "templates", "tests", ".github")
 _CODE_SUFFIXES = {
     ".py",
     ".ts",
     ".tsx",
     ".js",
+    ".mjs",
+    ".vue",
     ".css",
     ".sh",
     ".html",
@@ -43,7 +45,7 @@ _CODE_SUFFIXES = {
 }
 # Root-level manifests/configs a consumer word could hide in, outside the scanned dirs (a leaked name
 # in a package description or a CI job would otherwise be invisible).
-_ROOT_FILES = ("pyproject.toml", "package.json", "tsconfig.json")
+_ROOT_FILES = ("pyproject.toml", "package.json", "jsconfig.json")
 
 
 def _code_files():
