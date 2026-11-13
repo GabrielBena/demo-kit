@@ -113,12 +113,14 @@ from array import array
 from pathlib import Path
 from demokit import chunk, serve
 
+
 def run(inbox):  # called at every page load; `inbox` holds what the page sends
     t = 0.0
     while True:
         who, when = step_my_model(100.0)  # the project's own code, 100 ms of world time
         yield chunk(t, t + 100.0, key=True, who=array("i", who), when=array("f", when))
         t += 100.0
+
 
 serve(run, page=Path(__file__).parent / "page")  # http://127.0.0.1:8170
 ```
