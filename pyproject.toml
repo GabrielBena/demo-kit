@@ -1,24 +1,18 @@
 [project]
 name = "demo-kit"
-version = "0.1.1"
-description = "Live-demo kit: the substrate-agnostic transport + web scaffolding for interactive research demos — a Python FastAPI/WebSocket server streaming state snapshots of a real training/dynamics loop to a thin canvas client."
+version = "2.0.0"
+description = "Research demos drawn in pixel art, from a loop that really runs: a small pixel engine (plain JavaScript, no build) and a live half on the standard library that streams a running loop's chunks to a page that plays them."
 readme = "README.md"
 license = { file = "LICENSE" }
 authors = [{ name = "Gabriel Béna", email = "gabriel.bena1@gmail.com" }]
 requires-python = ">=3.12"
-# Hard deps, deliberately: the kit exists only to serve demos — an extra would be ceremony.
-# The heavy science deps (jax & friends) belong to the CONSUMER; the kit never imports them.
-dependencies = [
-    "fastapi>=0.110",
-    "uvicorn>=0.29",
-    "wsproto>=1.2",
-]
+dependencies = []  # Python's standard library only: the kit never imports the consumer's science
 
 [project.urls]
 Homepage = "https://github.com/GabrielBena/demo-kit"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "httpx>=0.27", "ruff>=0.6", "pyright>=1.1.400"]
+dev = ["pytest>=8", "ruff>=0.6", "pyright>=1.1.400"]
 
 [build-system]
 requires = ["hatchling"]

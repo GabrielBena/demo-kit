@@ -1,26 +1,13 @@
-"""demo-kit — substrate-agnostic transport + scaffolding for live research demos.
+"""demo-kit: research demos drawn in pixel art, from a loop that really runs.
 
-A browser watches a *real* training / dynamics loop and pokes at it: the Python side wraps your
-stateful session object in a FastAPI + WebSocket transport (play loop, action dispatch, NaN-safe
-JSON); the npm package ``demokit-web`` ships the matching thin-client primitives. The kit carries
-NO model logic — your session calls your project's canonical functions, so the per-frame tick is
-byte-identical to a training step.
+Two halves: the pixel engine and its hosts, plain JavaScript modules in ``demokit/web`` (no build),
+and the live half here, Python's standard library only: a source yields chunks of what happened
+(`chunk`), and `serve` streams them to a page that plays world time at a steady pace and draws a
+scene at each frame. The kit holds no model: the source calls the project's own functions.
 """
 
-from demokit.serve import main, serve
-from demokit.transport import ActionHandler, ExtraHandler, Hook, WsContext, dumps, finite, make_app
+from demokit.live import chunk, decode, make_server, serve
 
-__version__ = "0.1.1"
+__version__ = "2.0.0"
 
-__all__ = [
-    "ActionHandler",
-    "ExtraHandler",
-    "Hook",
-    "WsContext",
-    "__version__",
-    "dumps",
-    "finite",
-    "main",
-    "make_app",
-    "serve",
-]
+__all__ = ["__version__", "chunk", "decode", "make_server", "serve"]

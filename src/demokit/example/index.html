@@ -1,0 +1,15 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>demokit example</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #14161c; }
+  canvas { width: 100%; height: 100%; object-fit: contain; image-rendering: pixelated; display: block; }
+</style>
+<canvas id="view"></canvas>
+<script type="module">
+  import { live } from "/kit/live.js";
+  import { dots } from "./scene.js";
+
+  const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById("view"));
+  globalThis.demo = live({ canvas, scene: dots, w: 320, h: 180, perSecond: 1000, unit: "MS", span: 300 });
+</script>
