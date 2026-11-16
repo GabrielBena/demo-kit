@@ -88,10 +88,10 @@ node src/demokit/web/render.mjs scenes.js cells data.json out.png --step 2 --loo
 
 ```bash
 # both halves: the server, with the modules it serves
-pip install "demo-kit @ git+https://github.com/GabrielBena/demo-kit@v2.0.0"
+pip install "demo-kit @ git+https://github.com/GabrielBena/demo-kit@v2.1.0"
 
 # the drawing half alone, in a deck or a page's project
-npm install "github:GabrielBena/demo-kit#v2.0.0"
+npm install "github:GabrielBena/demo-kit#v2.1.0"
 
 # v1, both halves, as before
 pip install "demo-kit @ git+https://github.com/GabrielBena/demo-kit@v0.1.3"
@@ -133,7 +133,8 @@ serve(run, page=Path(__file__).parent / "page")  # http://127.0.0.1:8170
 - **The inbox:** a click on the page arrives as `{"pick": [x, y], "t": t}`; `send(msg)` posts any
   message. The source reads them between chunks.
 - **Routes:** `POST /start` (a fresh run), `GET /next` (the next chunk; 204 when the source ends),
-  `POST /act` (a message), `/kit/...` (this kit's modules), the rest from `page`. Bound to
+  `POST /act` (a message), `GET /devices` and `POST /device` (with a `move`, below), `/kit/...`
+  (this kit's modules), the rest from `page`. Bound to
   localhost: from another machine, `ssh -L 8170:localhost:8170 <host>`.
 
 The page (`page/index.html`):
@@ -152,6 +153,30 @@ last keyframe among them, each `{t0, t1, key, meta, arrays, shapes}` with typed 
 adds `t`, `speed` and `playing` to `step`, `tick` and `pick`. `speed` is a multiple of real time,
 `perSecond` world units a second; space pauses, `]` and `[` (or the arrows) double and halve it; a
 status line is drawn over the bottom 9 rows.
+
+**Where the loop runs.** On a machine with GPUs, the page can show where the source computes and
+move it: give `serve` the device it runs on and a `move(to)`, and the page `devices: true`. The
+status line then holds a chip per device, the CPU and each card (`G0`, `G1`, ...) with two bars,
+its memory in use and how busy it is, read live every two seconds (`demokit.gpu.cards`, from
+`nvidia-smi` and `ps`). Clicking a free card calls `move(card_uuid)`, usually `relaunch`, which
+replaces the server's process with a fresh one on that card, so the run holds one device only; the
+page waits for it and starts again.
+
+- **A shared machine's rule is enforced, not left to the page:** a card another user's job is on is
+  crossed out and the server refuses it (409); a run never joins one. A card holding only our own
+  processes may be chosen.
+- **An unwatched run gives its card back:** after `idle` seconds (ten minutes by default) with no
+  page asking anything, the server moves back to the CPU.
+
+```python
+import os, sys
+from demokit import relaunch, serve
+
+device = sys.argv[1] if len(sys.argv) > 1 else "cpu"  # or a card's UUID, from the page
+if device != "cpu":
+    os.environ["CUDA_VISIBLE_DEVICES"] = device  # before the first GPU client starts
+serve(run, page=page, device=device, move=lambda to: relaunch([sys.argv[0], to]))
+```
 
 **A working example**, dots that wander and flash: `python -m demokit.example`, then open
 `http://127.0.0.1:8170` (its source, page and scene are in `src/demokit/example/`).

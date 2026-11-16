@@ -20,10 +20,12 @@ Wire format of a chunk::
 from __future__ import annotations
 
 import json
+import os
 import queue
 import struct
 import sys
 import threading
+import time
 from collections.abc import Callable, Iterator
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -103,6 +105,7 @@ _TYPES = {".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascri
 _TYPES |= {".css": "text/css", ".json": "application/json", ".png": "image/png"}
 
 Source = Callable[["queue.SimpleQueue[dict]"], Iterator[bytes]]
+Move = Callable[[str], None]  # takes "cpu" or a card's UUID; usually relaunches on it (`relaunch`)
 
 
 class _Run:
@@ -125,7 +128,17 @@ class _Run:
             return None if self.chunks is None else next(self.chunks, None)
 
 
-def serve(start: Source, *, page: Path, port: int = 8170, host: str = "127.0.0.1", quiet=False):
+def serve(
+    start: Source,
+    *,
+    page: Path,
+    port: int = 8170,
+    host: str = "127.0.0.1",
+    quiet=False,
+    device: str = "cpu",
+    move: Move | None = None,
+    idle: float = 600.0,
+):
     """Serve a live page: ``page`` (a folder holding ``index.html``) and the chunks of ``start``.
 
     ``start(inbox)`` is called each time a page loads and returns that page's chunks; ``inbox``
@@ -133,8 +146,17 @@ def serve(start: Source, *, page: Path, port: int = 8170, host: str = "127.0.0.1
     ``POST /start`` (a fresh run), ``GET /next`` (the next chunk; 204 once the source ends),
     ``POST /act`` (a JSON message into the inbox), ``/kit/...`` (the kit's modules), the rest from
     ``page``. Bound to localhost by default: reach it from elsewhere through ``ssh -L``.
+
+    With ``move``, the page can also move the run between the CPU and the machine's cards:
+    ``GET /devices`` lists them live (`gpu.cards`) with ``device``, where the run is now, and
+    ``POST /device`` with ``{"to": "cpu"}`` or ``{"to": <a card's UUID>}`` calls ``move(to)``, once
+    the answer is sent. A card another user's job is on is refused (409): a run never joins one. A
+    run left on a card that no page has asked anything of for ``idle`` seconds moves back to the
+    CPU, so an unwatched demo does not hold a shared card.
     """
-    server = make_server(start, page=page, port=port, host=host)
+    server = make_server(start, page=page, port=port, host=host, device=device, move=move)
+    if move is not None and device != "cpu":
+        threading.Thread(target=_back_when_idle, args=(server, move, idle), daemon=True).start()
     if not quiet:
         print(f"demokit: http://{host}:{server.server_address[1]}  (Ctrl-C stops)", flush=True)
     try:
@@ -145,9 +167,39 @@ def serve(start: Source, *, page: Path, port: int = 8170, host: str = "127.0.0.1
         server.server_close()
 
 
-def make_server(start: Source, *, page: Path, port: int = 0, host: str = "127.0.0.1"):
-    """The server `serve` runs, not yet serving (port 0 picks a free one; for tests)."""
+def relaunch(argv: list[str]) -> None:
+    """This process replaced by ``python <argv>``, in the same interpreter: a `Move`'s usual end.
+
+    A run moves to another device by starting afresh there, so that it holds one device only: the
+    old process and everything it held on its device go. Its listening socket closes on the exec
+    and the new process binds the same port; a page waits for it, then starts again.
+    """
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os.execv(sys.executable, [sys.executable, *argv])
+
+
+def _back_when_idle(server: _Server, move: Move, idle: float) -> None:
+    while time.monotonic() - server.asked < idle:
+        time.sleep(min(idle, 10.0))
+    move("cpu")
+
+
+def make_server(
+    start: Source,
+    *,
+    page: Path,
+    port: int = 0,
+    host: str = "127.0.0.1",
+    device: str = "cpu",
+    move: Move | None = None,
+    cards: Callable[[], list[dict]] | None = None,
+):
+    """The server `serve` runs, not yet serving (port 0 picks a free one; ``cards`` for tests)."""
+    from demokit import gpu
+
     run, roots = _Run(start), {"": Path(page).resolve(), "kit/": WEB.resolve()}
+    listed: Callable[[], list[dict]] = cards or gpu.cards
 
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, format: str, *args: Any) -> None:  # quiet: a page pulls many chunks
@@ -162,17 +214,33 @@ def make_server(start: Source, *, page: Path, port: int = 0, host: str = "127.0.
             self.wfile.write(body)
 
         def do_POST(self):
+            server.asked = time.monotonic()
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
             if self.path == "/start":
                 run.restart()
             elif self.path == "/act":
                 run.inbox.put(json.loads(body or b"{}"))
+            elif self.path == "/device" and move is not None:
+                return self._move(move, json.loads(body or b"{}").get("to", ""))
             else:
                 return self._send(404)
             self._send(204)
 
+        def _move(self, move: Move, to: str):
+            if to == device:
+                return self._send(204)
+            if to != "cpu" and not any(c["uuid"] == to and c["free"] for c in listed()):
+                return self._send(409)  # another user's job is on it, or there is no such card
+            self._send(202)
+            self.wfile.flush()
+            threading.Timer(0.2, move, args=(to,)).start()  # once the answer has left
+
         def do_GET(self):
+            server.asked = time.monotonic()
             path = self.path.split("?")[0].lstrip("/")
+            if path == "devices" and move is not None:
+                listing = {"device": device, "cards": listed()}
+                return self._send(200, json.dumps(listing).encode(), "application/json")
             if path == "next":
                 data = run.next()
                 return self._send(204) if data is None else self._send(200, data)
@@ -183,4 +251,10 @@ def make_server(start: Source, *, page: Path, port: int = 0, host: str = "127.0.
                 return self._send(404)
             self._send(200, file.read_bytes(), _TYPES.get(file.suffix, "application/octet-stream"))
 
-    return ThreadingHTTPServer((host, port), Handler)
+    server = _Server((host, port), Handler)
+    server.asked = time.monotonic()
+    return server
+
+
+class _Server(ThreadingHTTPServer):
+    asked: float  # when a page last asked anything (time.monotonic)

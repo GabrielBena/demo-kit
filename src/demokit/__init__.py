@@ -6,8 +6,8 @@ and the live half here, Python's standard library only: a source yields chunks o
 scene at each frame. The kit holds no model: the source calls the project's own functions.
 """
 
-from demokit.live import chunk, decode, make_server, serve
+from demokit.live import chunk, decode, make_server, relaunch, serve
 
-__version__ = "2.0.0"
+__version__ = "2.1.0"
 
-__all__ = ["__version__", "chunk", "decode", "make_server", "serve"]
+__all__ = ["__version__", "chunk", "decode", "make_server", "relaunch", "serve"]

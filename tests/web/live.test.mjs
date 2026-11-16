@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { decode, needed, tape } from "../../src/demokit/web/live.js";
+import { chipAt, chips, decode, needed, tape } from "../../src/demokit/web/live.js";
 
 /** @typedef {import("../../src/demokit/web/live.js").Chunk} Chunk */
 
@@ -33,4 +33,18 @@ test("the page keeps from the last keyframe by now, and back a span", () => {
   assert.equal(needed(chunks, 45, 0), 2); // the keyframe at 20 holds the state
   assert.equal(needed(chunks, 45, 30), 1); // a span of 30 reaches back into the chunk at 10
   assert.equal(needed(run([false, false, false]), 25, 0), 2); // no keyframe: only what is current
+});
+
+test("the device chips sit right-aligned, the CPU first, a taken card not free", () => {
+  const cards = [
+    { uuid: "GPU-a", index: 0, used: 620, total: 1000, util: 50, free: true },
+    { uuid: "GPU-b", index: 1, used: null, total: null, util: null, free: false },
+  ];
+  const list = chips({ device: "GPU-a", cards }, 320, 180);
+  assert.deepEqual(list.map((c) => [c.label, c.state]), [["CPU", "free"], ["G0", "here"], ["G1", "taken"]]);
+  const last = list[list.length - 1];
+  assert.equal(last.x + last.w, 318);
+  assert.deepEqual([list[1].used, list[1].util, list[2].used], [0.62, 0.5, 0]);
+  assert.equal(chipAt(list, [list[2].x + 1, 175])?.label, "G1");
+  assert.equal(chipAt(list, [10, 175]), null);
 });

@@ -1,6 +1,6 @@
 {
   "name": "demokit-web",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "The demo kit's drawing half: a small pixel engine (an indexed framebuffer, a 5 × 7 font, dithered looks) and its hosts (a browser canvas, a Slidev component, a PNG in Node). Plain JavaScript modules: no build, no runtime dependency.",
   "type": "module",
   "license": "MIT",
