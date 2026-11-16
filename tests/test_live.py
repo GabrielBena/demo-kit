@@ -73,3 +73,51 @@ def test_the_server_streams_a_run_and_its_inbox(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_a_run_moves_only_to_a_free_card(tmp_path):
+    (tmp_path / "index.html").write_text("<p>page</p>")
+    cards = [{"uuid": "GPU-a", "free": True}, {"uuid": "GPU-b", "free": False}]
+    moved: list[str] = []
+    done = threading.Event()
+
+    def move(to):
+        moved.append(to)
+        done.set()
+
+    def start(inbox):
+        yield chunk(0, 1)
+
+    url, server = _serving(make_server(start, page=tmp_path, move=move, cards=lambda: cards))
+    try:
+        assert json.loads(_call(url, "/devices")[2]) == {"device": "cpu", "cards": cards}
+        assert _call(url, "/device", json.dumps({"to": "GPU-b"}).encode())[0] == 409  # taken
+        assert _call(url, "/device", json.dumps({"to": "GPU-x"}).encode())[0] == 409  # unknown
+        assert _call(url, "/device", json.dumps({"to": "cpu"}).encode())[0] == 204  # already there
+        assert _call(url, "/device", json.dumps({"to": "GPU-a"}).encode())[0] == 202
+        assert done.wait(5) and moved == ["GPU-a"]
+    finally:
+        server.shutdown()
+        server.server_close()
+    url, server = _serving(make_server(start, page=tmp_path))  # no `move`: no devices
+    try:
+        assert _call(url, "/devices")[0] == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def _serving(server):
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return f"http://127.0.0.1:{server.server_address[1]}", server
+
+
+def _call(url, path, body=None):
+    request = urllib.request.Request(
+        url + path, data=body, method="GET" if body is None else "POST"
+    )
+    try:
+        with urllib.request.urlopen(request) as res:
+            return res.status, res.headers.get("Content-Type"), res.read()
+    except urllib.error.HTTPError as error:
+        return error.code, None, b""
