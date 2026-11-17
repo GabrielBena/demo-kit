@@ -29,6 +29,12 @@ def test_a_chunk_reads_back_whole():
     assert arrays["grid"].tolist() == [[0, 1, 2], [3, 4, 5]] and arrays["none"].tolist() == []
 
 
+def test_an_empty_array_of_any_shape_keeps_its_shape():
+    rows = memoryview(array("f", [0.0, 0.0])).cast("B").cast("f", [1, 2])[0:0]  # shape (0, 2)
+    head, arrays = decode(chunk(0.0, 1.0, rows=rows))
+    assert head["arrays"][0][2] == [0, 2] and arrays["rows"].tolist() == []
+
+
 def test_the_wire_is_the_fixture_both_sides_read():
     assert sample() == FIXTURE.read_bytes()
 

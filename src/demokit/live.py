@@ -72,7 +72,8 @@ def chunk(t0: float, t1: float, *, key: bool = False, meta: dict | None = None, 
         dtype = _DTYPES.get((view.format.lstrip("<=@"), view.itemsize))
         if dtype is None:
             raise ValueError(f"{name}: format {view.format!r} has no typed array (send 32 bits)")
-        views.append(view.cast("B"))
+        # a memoryview cannot cast a shape holding a 0: an empty array sends no bytes, its shape kept
+        views.append(view.cast("B") if view.nbytes else memoryview(b""))
         entries.append([name, dtype, list(view.shape or ()), offset, view.nbytes])
         offset += view.nbytes + _pad(view.nbytes)
     head = {"t0": t0, "t1": t1, "key": key, "meta": meta or {}, "arrays": entries}
